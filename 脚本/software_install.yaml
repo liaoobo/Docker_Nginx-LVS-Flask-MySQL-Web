@@ -1,0 +1,59 @@
+- hosts: lvs
+  remote_user: root
+  tasks:
+  - name: install keepalived  #负载均衡器中安装keepalived，实现高可用
+    yum: name=keepalived state=installed
+  - name: install ipvsadm  #负载均衡器中安装lvs管理工具ipvsadm
+    yum: name=ipvsadm state=installed
+
+- hosts: nfs web nginx  #安装nfs软件
+  remote_user: root
+  tasks:
+  - name: install nfs
+    yum: name=nfs-utils state=installed
+    
+- hosts: web nginx #安装docker
+  remote_user: root
+  tasks:  
+  - name: copy onekey_install_docker.sh  #上传安装docker脚本
+    copy: src=/root/onekey_install_docker.sh dest=/root/
+  - name: install docker #执行脚本
+    script: /root/onekey_install_docker.sh
+    
+- hosts: mysql #mysql集群
+  remote_user: root
+  tasks:  
+  - name: copy mysql.tar.gz     #上传MySQL安装包到mysql主机组
+    copy: src=/root/mysql-5.7.43-linux-glibc2.12-x86_64.tar.gz dest=/root/
+  - name: copy mysql.sh     #上传脚本到mysql主机组
+    copy: src=/root/onekey_install_mysql.sh dest=/root/
+  - name: install mysql #安装MySQL
+    script: /root/onekey_install_mysql.sh
+
+- hosts: web #web服务器
+  remote_user: root
+  tasks:
+  - name: copy file     #上传mysqlrouter安装包到服务器
+    copy: src=/root/mysql-router-community-8.0.23-1.el7.x86_64.rpm dest=/root/
+  - name: install mysqlrouter #安装mysqlrouter
+    shell:  rpm -ivh mysql-router-community-8.0.23-1.el7.x86_64.rpm
+
+- hosts: dns #dns服务器
+  remote_user: root
+  tasks:
+  - name: install dns
+    yum: name=bind.* state=installed
+
+- hosts: lvs nginx web nfs mysql #调用本地node_exporter脚本，批量安装部署node_exporter，为prometheus采集数据
+  remote_user: root
+  tasks:
+  - name: copy file     #上传node_exporter安装包到服务器
+    copy: src=/root/node_exporter-1.6.1.linux-amd64.tar.gz dest=/root/
+  - name: copy file     #上传脚本到服务器
+    copy: src=/root/node_exporter.sh dest=/root/
+  - name: install node_exporters  #执行脚本
+    script: /root/node_exporter.sh
+    tags: install_exporter
+  - name: start node_exporters  #后台运行node_exporters
+    shell: nohup node_exporter --web.listen-address 0.0.0.0:8090 &
+    tags: start_exporters  #打标签，方便后面直接跳转到此处批量启动node_exporters
